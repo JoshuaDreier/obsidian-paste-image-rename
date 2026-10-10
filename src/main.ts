@@ -72,14 +72,17 @@ export default class PasteImageRenamePlugin extends Plugin {
 		console.log(`Plugin loading: ${pkg.name} ${pkg.version} BUILD_ENV=${process.env.BUILD_ENV}`)
 		await this.loadSettings();
 
-		this.registerEvent(
+		// vault 'create' fires for every existing file while the vault is indexed on startup,
+		// so only start listening once the layout is ready
+		this.app.workspace.onLayoutReady(() => this.registerEvent(
 			this.app.vault.on('create', (file) => {
 				// debugLog('file created', file)
 				if (!(file instanceof TFile))
 					return
-				const timeGapMs = (new Date().getTime()) - file.stat.ctime
-				// if the file is created more than 1 second ago, the event is most likely be fired on vault initialization when starting Obsidian app, ignore it
-				if (timeGapMs > 1000)
+				// ctime is 0 on filesystems without birth time (e.g. NTFS via FUSE on Linux), fall back to mtime
+				const timeGapMs = (new Date().getTime()) - Math.max(file.stat.ctime, file.stat.mtime)
+				// ignore files that were not just created (e.g. pulled in by a sync tool)
+				if (timeGapMs > 5000)
 					return
 				// always ignore markdown file creation
 				if (isMarkdownFile(file))
@@ -98,7 +101,7 @@ export default class PasteImageRenamePlugin extends Plugin {
 					}
 				}
 			})
-		)
+		))
 
 		const startBatchRenameProcess = () => {
 			this.openBatchRenameModal()
